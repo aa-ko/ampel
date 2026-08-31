@@ -1,0 +1,17 @@
+[package]
+name = "co2ampel"
+version = "0.1.0"
+edition = "2021"
+description = "Show CO2 ppm from an MQTT sensor topic on a Cleware USB traffic light"
+license = "GPL-3.0-only"
+
+[[bin]]
+name = "co2ampel"
+path = "src/main.rs"
+
+[dependencies]
+cleware = { path = "../cleware" }
+clap = { version = "4", features = ["derive", "env"] }
+# Plain TCP only; add features = ["use-rustls"] if a broker ever needs TLS.
+rumqttc = { version = "0.25", default-features = false }
+serde_json = "1"

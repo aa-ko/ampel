@@ -1,0 +1,16 @@
+# cross builds inside a container that mounts ~/.cargo, so host-only settings in
+# ~/.cargo/config.toml (sccache wrapper, clang+mold linker) get looked up in the
+# image, where they do not exist. `task arm` clears them via these variables.
+[build.env]
+passthrough = [
+  "RUSTC_WRAPPER",
+  "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER",
+  "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS",
+]
+
+# The default `:main` image is built on Ubuntu 24.04 (glibc 2.39), so its binaries
+# refuse to start on Raspberry Pi OS bookworm (glibc 2.36). The 0.2.5 image is
+# Ubuntu 20.04 (glibc 2.31) and glibc is forward compatible, so build against the
+# old one and run anywhere newer.
+[target.aarch64-unknown-linux-gnu]
+image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:0.2.5"

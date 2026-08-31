@@ -1,0 +1,9 @@
+# Non-root access to the Cleware USB traffic light (vendor id 0d50).
+# Install with `task install-udev`, then re-plug (or re-trigger) the device.
+#
+# The vendor tool (USBswitchCmd) opens the kernel hiddev node
+# (/dev/usb/hiddevN). udev exposes that node under SUBSYSTEM=="usbmisc" — that
+# is the line that actually grants access; the "usb" line covers the raw USB
+# device node for good measure.
+SUBSYSTEM=="usbmisc", ATTRS{idVendor}=="0d50", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0d50", MODE="0666"
