@@ -6,6 +6,10 @@
 //!   otherwise           -> RED     (open a window)
 //!   no reading for --stale-secs -> OFF (never show green for a dead sensor)
 //!
+//! With --status-topic, the sensor's own availability wins over any reading: a
+//! sensor that reports "offline" (or whose last will the broker publishes) turns
+//! the light off at once, instead of waiting out --stale-secs.
+//!
 //! Rate limiting lives in `cleware::Light`, so a chatty sensor cannot hammer the
 //! USB device.
 
@@ -19,6 +23,10 @@ use rumqttc::{Client, Event, MqttOptions, Packet, QoS};
 /// loop regularly, which is when the staleness check runs.
 const KEEP_ALIVE: Duration = Duration::from_secs(15);
 const RECONNECT_WAIT: Duration = Duration::from_secs(5);
+
+/// Payloads on the sensor's availability topic.
+const PAYLOAD_ONLINE: &[u8] = b"online";
+const PAYLOAD_OFFLINE: &[u8] = b"offline";
 
 #[derive(Parser)]
 #[command(
@@ -44,6 +52,10 @@ struct Args {
     /// MQTT client id.
     #[arg(long, default_value = "co2ampel")]
     client_id: String,
+    /// Availability topic of the sensor ("online" / "offline"). Without it, only
+    /// --stale-secs detects a dead sensor.
+    #[arg(long, env = "CO2AMPEL_STATUS_TOPIC")]
+    status_topic: Option<String>,
     /// Field to read when the payload is a JSON object.
     #[arg(long, default_value = "co2")]
     json_field: String,
@@ -81,6 +93,32 @@ fn decide(ppm: f64, t: &Thresholds) -> Color {
         Color::Yellow
     } else {
         Color::Red
+    }
+}
+
+/// What the sensor last said about itself. Assumed `Online` until it says
+/// otherwise, so a broker without an availability topic behaves as before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Availability {
+    Online,
+    Offline,
+}
+
+fn parse_availability(payload: &[u8]) -> Option<Availability> {
+    match payload {
+        PAYLOAD_ONLINE => Some(Availability::Online),
+        PAYLOAD_OFFLINE => Some(Availability::Offline),
+        _ => None,
+    }
+}
+
+/// The colour to show. An offline sensor beats any reading it left behind — the
+/// broker replays retained readings from before the outage, and a stale number
+/// must not look like current air.
+fn show(availability: Availability, reading: Option<Color>) -> Color {
+    match availability {
+        Availability::Offline => Color::Off,
+        Availability::Online => reading.unwrap_or(Color::Off),
     }
 }
 
@@ -134,26 +172,44 @@ fn main() {
     );
 
     let mut last_reading: Option<Instant> = None;
-    let mut desired = Color::Off;
+    let mut reading: Option<Color> = None;
+    let mut availability = Availability::Online;
     for event in connection.iter() {
         match event {
             // Subscribe on every (re)connect, so a dropped session resubscribes.
             Ok(Event::Incoming(Packet::ConnAck(_))) => {
-                if let Err(e) = client.subscribe(&topic, QoS::AtMostOnce) {
-                    eprintln!("[co2ampel] subscribe failed: {e}");
+                for topic in [Some(&topic), args.status_topic.as_ref()].into_iter().flatten() {
+                    if let Err(e) = client.subscribe(topic, QoS::AtMostOnce) {
+                        eprintln!("[co2ampel] subscribe to `{topic}` failed: {e}");
+                    }
                 }
             }
             Ok(Event::Incoming(Packet::Publish(publish))) => {
-                match parse_ppm(&publish.payload, &args.json_field) {
-                    Ok(ppm) => {
-                        let color = decide(ppm, &thresholds);
-                        if color != desired {
-                            eprintln!("[co2ampel] {ppm:.0} ppm -> {color}");
+                if Some(&publish.topic) == args.status_topic.as_ref() {
+                    match parse_availability(&publish.payload) {
+                        Some(next) => {
+                            if next != availability {
+                                eprintln!("[co2ampel] sensor is {next:?}");
+                            }
+                            availability = next;
                         }
-                        desired = color;
-                        last_reading = Some(Instant::now());
+                        None => eprintln!(
+                            "[co2ampel] {}: unknown availability payload",
+                            publish.topic
+                        ),
                     }
-                    Err(e) => eprintln!("[co2ampel] {}: {e}", publish.topic),
+                } else {
+                    match parse_ppm(&publish.payload, &args.json_field) {
+                        Ok(ppm) => {
+                            let color = decide(ppm, &thresholds);
+                            if Some(color) != reading {
+                                eprintln!("[co2ampel] {ppm:.0} ppm -> {color}");
+                            }
+                            reading = Some(color);
+                            last_reading = Some(Instant::now());
+                        }
+                        Err(e) => eprintln!("[co2ampel] {}: {e}", publish.topic),
+                    }
                 }
             }
             Ok(_) => {}
@@ -163,13 +219,14 @@ fn main() {
             }
         }
 
-        // A sensor that went quiet must not leave a stale green burning.
+        // Backstop for a sensor that stops publishing without saying goodbye.
         if last_reading.map_or(false, |t| t.elapsed() >= stale_after) {
             eprintln!("[co2ampel] no reading for {}s -> off", stale_after.as_secs());
-            desired = Color::Off;
+            reading = None;
             last_reading = None;
         }
-        if let Err(e) = light.request(desired) {
+
+        if let Err(e) = light.request(show(availability, reading)) {
             eprintln!("[co2ampel] {e}");
         }
     }
@@ -210,5 +267,25 @@ mod tests {
     #[test]
     fn rejects_garbage_payload() {
         assert!(parse_ppm(b"n/a", "co2").is_err());
+    }
+
+    #[test]
+    fn offline_sensor_beats_its_last_reading() {
+        // The broker replays a retained ppm from before the outage; it must not
+        // outrank the retained "offline" that came with it.
+        assert_eq!(show(Availability::Offline, Some(Color::Green)), Color::Off);
+        assert_eq!(show(Availability::Online, Some(Color::Green)), Color::Green);
+    }
+
+    #[test]
+    fn no_reading_yet_is_off() {
+        assert_eq!(show(Availability::Online, None), Color::Off);
+    }
+
+    #[test]
+    fn parses_availability_payloads() {
+        assert_eq!(parse_availability(b"online"), Some(Availability::Online));
+        assert_eq!(parse_availability(b"offline"), Some(Availability::Offline));
+        assert_eq!(parse_availability(b"ONLINE"), None);
     }
 }

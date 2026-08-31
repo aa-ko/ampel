@@ -88,12 +88,16 @@ Fake readings, so you can see every colour without breathing on the sensor:
 mqttui publish buero-nord/co2sensor/co2 700    # green
 mqttui publish buero-nord/co2sensor/co2 1000   # yellow
 mqttui publish buero-nord/co2sensor/co2 1500   # red
+
+mqttui publish -r buero-nord/co2sensor/status offline   # light goes off at once
+mqttui publish -r buero-nord/co2sensor/status online    # ppm takes over again
 ```
 
 Run `co2ampel` against the same topic while doing that:
 
 ```sh
-task co2 -- --host homeassistant.intern.atmina.systems --topic buero-nord/co2sensor/co2
+task co2 -- --host homeassistant.intern.atmina.systems \
+  --topic buero-nord/co2sensor/co2 --status-topic buero-nord/co2sensor/status
 ```
 
 Each switch is logged with the ppm that caused it. Remember the 3 s cooldown between physical switches: publish faster than that and only the newest colour lands.
@@ -106,6 +110,9 @@ Each switch is logged with the ppm that caused it. Remember the 3 s cooldown bet
 | ppm < `--alarm-ppm` (1200) | 🟡 yellow — open a window soon |
 | above that | 🔴 red — open a window |
 | no reading for `--stale-secs` (300) | ⚫ off — never show green for a dead sensor |
+| sensor published `offline` on `--status-topic` | ⚫ off — immediately, no waiting |
+
+An `--status-topic` beats any reading: the broker replays retained readings from before an outage, and a stale number must not look like current air. [co2-monitor-rs](https://github.com/aa-ko/co2-sensor-rs) publishes `online` there on connect and registers `offline` as its last will, so the broker speaks for the sensor even when it loses power.
 
 ## License
 
