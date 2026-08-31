@@ -1,0 +1,35 @@
+# systemd system unit for co2ampel, meant for a Raspberry Pi with the traffic
+# light plugged in.
+#
+# Install (on the Pi, as root):
+#   install -m 0755 co2ampel /usr/local/bin/co2ampel
+#   install -m 0644 packaging/99-cleware.rules /etc/udev/rules.d/
+#   udevadm control --reload-rules && udevadm trigger
+#   install -m 0640 packaging/co2ampel.env /etc/default/co2ampel   # then edit it
+#   install -m 0644 packaging/co2ampel.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now co2ampel.service
+#
+# Broker, topic and thresholds come from /etc/default/co2ampel, so no credentials
+# end up in the unit; `co2ampel --help` lists the flag each variable maps to.
+[Unit]
+Description=CO2 ppm on a Cleware USB traffic light
+Documentation=https://github.com/aa-ko/ampel
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# The user must be able to read and write /dev/usb/hiddev* (see 99-cleware.rules).
+User=pi
+EnvironmentFile=/etc/default/co2ampel
+ExecStart=/usr/local/bin/co2ampel
+# Do not leave a stale colour burning once the service stops.
+ExecStopPost=/usr/local/bin/co2ampel --off
+# Keep trying: a missing broker, a missing light and an unplugged sensor are all
+# recoverable without help.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

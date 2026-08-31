@@ -33,8 +33,8 @@ struct Args {
     #[arg(long, default_value_t = 1883, env = "CO2AMPEL_PORT")]
     port: u16,
     /// Topic carrying the CO2 reading.
-    #[arg(long, env = "CO2AMPEL_TOPIC")]
-    topic: String,
+    #[arg(long, env = "CO2AMPEL_TOPIC", required_unless_present = "off")]
+    topic: Option<String>,
     /// Broker username (password required alongside it).
     #[arg(long, env = "CO2AMPEL_USERNAME")]
     username: Option<String>,
@@ -48,13 +48,13 @@ struct Args {
     #[arg(long, default_value = "co2")]
     json_field: String,
     /// Below this ppm the light is green.
-    #[arg(long, default_value_t = 900.0)]
+    #[arg(long, default_value_t = 900.0, env = "CO2AMPEL_WARN_PPM")]
     warn_ppm: f64,
     /// At or above this ppm the light is red.
-    #[arg(long, default_value_t = 1200.0)]
+    #[arg(long, default_value_t = 1200.0, env = "CO2AMPEL_ALARM_PPM")]
     alarm_ppm: f64,
     /// Turn the light off after this long without a reading.
-    #[arg(long, default_value_t = 300)]
+    #[arg(long, default_value_t = 300, env = "CO2AMPEL_STALE_SECS")]
     stale_secs: u64,
     /// Minimum seconds between physical switches (the light is fragile).
     #[arg(long, default_value_t = 3)]
@@ -62,6 +62,9 @@ struct Args {
     /// Re-assert the current color this often so the light survives a re-plug.
     #[arg(long, default_value_t = 30)]
     reassert_secs: u64,
+    /// Turn the light off and exit, connecting to no broker.
+    #[arg(long)]
+    off: bool,
 }
 
 /// ppm thresholds, resolved from the CLI once so the mapping stays a pure
@@ -98,6 +101,15 @@ fn parse_ppm(payload: &[u8], field: &str) -> Result<f64, String> {
 
 fn main() {
     let args = Args::parse();
+    if args.off {
+        if let Err(e) = cleware::set(Color::Off) {
+            eprintln!("[co2ampel] {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    // Guaranteed by `required_unless_present` on the flag.
+    let topic = args.topic.expect("--topic is required without --off");
     let thresholds = Thresholds {
         warn: args.warn_ppm,
         alarm: args.alarm_ppm,
@@ -118,7 +130,7 @@ fn main() {
 
     eprintln!(
         "[co2ampel] {}:{} topic `{}`; green <{} <=yellow< {} <=red",
-        args.host, args.port, args.topic, args.warn_ppm, args.alarm_ppm
+        args.host, args.port, topic, args.warn_ppm, args.alarm_ppm
     );
 
     let mut last_reading: Option<Instant> = None;
@@ -127,7 +139,7 @@ fn main() {
         match event {
             // Subscribe on every (re)connect, so a dropped session resubscribes.
             Ok(Event::Incoming(Packet::ConnAck(_))) => {
-                if let Err(e) = client.subscribe(&args.topic, QoS::AtMostOnce) {
+                if let Err(e) = client.subscribe(&topic, QoS::AtMostOnce) {
                     eprintln!("[co2ampel] subscribe failed: {e}");
                 }
             }

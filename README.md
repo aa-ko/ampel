@@ -66,6 +66,38 @@ task install-udev    # udev rule for the light (needs sudo)
 
 `co2ampel --help` lists every flag: broker, credentials, topic, ppm thresholds, staleness timeout, and the switching limits.
 
+## Deploying to a Raspberry Pi
+
+`task arm`, copy `target/aarch64-unknown-linux-gnu/release/co2ampel` to the Pi, then install the unit and its environment file as described at the top of [`packaging/co2ampel.service`](packaging/co2ampel.service). Broker, topic and thresholds live in `/etc/default/co2ampel` (from [`packaging/co2ampel.env`](packaging/co2ampel.env)) so no credentials end up in the unit, and the service turns the light off when it stops.
+
+The sensor half deploys the same way from [co2-monitor-rs](https://github.com/aa-ko/co2-sensor-rs) (`just build-pi`, then its `co2-monitor.service`).
+
+## Testing with mqttui
+
+[`mqttui`](https://github.com/EdJoPaTo/mqttui) is the quickest way to drive the light without touching the sensor. Watch what the sensor actually publishes:
+
+```sh
+export MQTTUI_BROKER=mqtt://homeassistant.intern.atmina.systems
+mqttui                                  # browse the whole broker
+mqttui log 'buero-thevea/co2sensor/#'   # follow both readings
+```
+
+Fake readings, so you can see every colour without breathing on the sensor:
+
+```sh
+mqttui publish buero-thevea/co2sensor/co2 700    # green
+mqttui publish buero-thevea/co2sensor/co2 1000   # yellow
+mqttui publish buero-thevea/co2sensor/co2 1500   # red
+```
+
+Run `co2ampel` against the same topic while doing that:
+
+```sh
+task co2 -- --host homeassistant.intern.atmina.systems --topic buero-thevea/co2sensor/co2
+```
+
+Each switch is logged with the ppm that caused it. Remember the 3 s cooldown between physical switches: publish faster than that and only the newest colour lands.
+
 ## Colour mapping (`co2ampel`)
 
 | Reading | Colour |
