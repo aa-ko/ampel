@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install co2ampel on this machine. Run on the Pi, from the directory `task
+# Install co2ampel on this machine. Run on the Pi, from the directory `just
 # deploy` copied here:
 #
 #   sudo ./setup.sh <user that should run the service>

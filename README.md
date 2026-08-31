@@ -31,15 +31,15 @@ co2ampel/            co2ampel — CO2 ppm via MQTT on the light
 vendor/cleware/      vendor Cleware C/C++ driver (GPL-3.0), compiled into cleware/
 packaging/           udev rule for non-root access to the light
 Cross.toml           container image + env for the ARM cross build
-Taskfile.yml         build/run tasks
+justfile             build/run recipes
 ```
 
 ## Prerequisites
 
-- A **Rust toolchain** (`cargo`) and [`task`](https://taskfile.dev).
+- A **Rust toolchain** (`cargo`) and [`just`](https://just.systems).
 - A **C/C++ compiler** (`gcc` + `g++`) — `cleware/build.rs` compiles `vendor/cleware/`.
 - A **Cleware USB traffic light** plugged in.
-- **udev rules** for non-root device access — `task install-udev` installs `packaging/99-cleware.rules`.
+- **udev rules** for non-root device access — `just install-udev` installs `packaging/99-cleware.rules`.
 
 ### For `co2ampel`
 
@@ -49,19 +49,19 @@ Taskfile.yml         build/run tasks
 
 ### For the Raspberry Pi
 
-[`cross`](https://github.com/cross-rs/cross) (`cargo install cross`) and a working **Docker** or Podman, then `task arm`. Pi 3 and Pi 5 both run 64-bit Raspberry Pi OS, so `aarch64-unknown-linux-gnu` covers both.
+[`cross`](https://github.com/cross-rs/cross) (`cargo install cross`) and a working **Docker** or Podman, then `just arm`. Pi 3 and Pi 5 both run 64-bit Raspberry Pi OS, so `aarch64-unknown-linux-gnu` covers both.
 
-`Cross.toml` pins the older `0.2.5` container image on purpose: the default `:main` image is built on Ubuntu 24.04 and produces binaries that need glibc 2.39, which Raspberry Pi OS does not have. It also passes through the variables `task arm` uses to clear host-only cargo settings, because cross mounts `~/.cargo/config.toml` into a container that has neither sccache nor clang/mold.
+`Cross.toml` pins the older `0.2.5` container image on purpose: the default `:main` image is built on Ubuntu 24.04 and produces binaries that need glibc 2.39, which Raspberry Pi OS does not have. It also passes through the variables `just arm` uses to clear host-only cargo settings, because cross mounts `~/.cargo/config.toml` into a container that has neither sccache nor clang/mold.
 
 ## Build & run
 
 ```sh
-task build           # both crates (the vendor C++ comes along via build.rs)
-task test            # all workspace tests
-task arm             # cross-compile co2ampel for a 64-bit Pi
+just build           # both crates (the vendor C++ comes along via build.rs)
+just test            # all workspace tests
+just arm             # cross-compile co2ampel for a 64-bit Pi
 
-task co2 -- --host pi --topic buero-nord/co2sensor/co2
-task install-udev    # udev rule for the light (needs sudo)
+just co2 --host pi --topic buero-nord/co2sensor/co2
+just install-udev    # udev rule for the light (needs sudo)
 ```
 
 `co2ampel --help` lists every flag: broker, credentials, topic, ppm thresholds, staleness timeout, and the switching limits.
@@ -69,13 +69,13 @@ task install-udev    # udev rule for the light (needs sudo)
 ## Deploying to a Raspberry Pi
 
 ```sh
-task deploy -- pi:/home/pi/co2ampel     # cross-compiles, then copies binary + rule + unit + setup
-ssh pi 'cd /home/pi/co2ampel && sudo ./setup.sh pi'
+just deploy pi:~/co2ampel               # cross-compiles, then copies binary + rule + unit + setup
+ssh pi 'cd ~/co2ampel && sudo ./setup.sh pi'
 ```
 
 [`packaging/setup.sh`](packaging/setup.sh) takes the user that should run the service and does the rest: installs the binary and the udev rule, writes the unit with that user baked in, and enables it. It never overwrites an existing `/etc/default/co2ampel`, so on a first install it stops short of starting the service and tells you to fill in the broker and topic — those live there rather than in the unit so no credentials end up in systemd. The service turns the light off when it stops.
 
-The sensor half deploys the same way from [co2-monitor-rs](https://github.com/aa-ko/co2-sensor-rs): `just deploy pi:/home/pi/co2-monitor`, then its own `setup.sh`.
+The sensor half deploys the same way from [co2-monitor-rs](https://github.com/aa-ko/co2-sensor-rs): `just deploy pi:~/co2-monitor`, then its own `setup.sh`.
 
 ## Testing with mqttui
 
@@ -101,7 +101,7 @@ mqttui publish -r buero-nord/co2sensor/status online    # ppm takes over again
 Run `co2ampel` against the same topic while doing that:
 
 ```sh
-task co2 -- --host homeassistant.intern.atmina.systems \
+just co2 --host homeassistant.intern.atmina.systems \
   --topic buero-nord/co2sensor/co2 --status-topic buero-nord/co2sensor/status
 ```
 

@@ -1,6 +1,6 @@
 # cross builds inside a container that mounts ~/.cargo, so host-only settings in
 # ~/.cargo/config.toml (sccache wrapper, clang+mold linker) get looked up in the
-# image, where they do not exist. `task arm` clears them via these variables.
+# image, where they do not exist. `just arm` clears them via these variables.
 [build.env]
 passthrough = [
   "RUSTC_WRAPPER",
