@@ -12,13 +12,8 @@ alias b := build
 alias d := deploy
 alias t := test
 
-# Show a short repo summary and list the recipes
+# List the available recipes
 default:
-    @echo "ampel — drive a Cleware USB traffic light from Rust."
-    @echo
-    @echo "  cleware/    wrapper around the vendor C++ driver (Color, Light, set)"
-    @echo "  co2ampel/   CO2 ppm via MQTT -> green / yellow / red"
-    @echo
     @just --list --unsorted
 
 # Build both crates (release); the vendor C++ is compiled by cleware/build.rs
@@ -45,7 +40,10 @@ deploy target: arm
     host=$(echo "{{target}}" | cut -d: -f1)
     path=$(echo "{{target}}" | cut -d: -f2-)
     # Unquoted on purpose: a leading ~ has to be expanded by the remote shell.
-    ssh "$host" "mkdir -p $path"
+    if ! ssh "$host" "mkdir -p $path"; then
+        echo "could not create $path on $host — does it already exist as a file?" >&2
+        exit 1
+    fi
     scp target/{{arm_target}}/release/co2ampel \
         packaging/99-cleware.rules \
         packaging/co2ampel.service \
