@@ -68,9 +68,14 @@ task install-udev    # udev rule for the light (needs sudo)
 
 ## Deploying to a Raspberry Pi
 
-`task arm`, copy `target/aarch64-unknown-linux-gnu/release/co2ampel` to the Pi, then install the unit and its environment file as described at the top of [`packaging/co2ampel.service`](packaging/co2ampel.service). Broker, topic and thresholds live in `/etc/default/co2ampel` (from [`packaging/co2ampel.env`](packaging/co2ampel.env)) so no credentials end up in the unit, and the service turns the light off when it stops.
+```sh
+task deploy -- pi:/home/pi/co2ampel     # cross-compiles, then copies binary + rule + unit + setup
+ssh pi 'cd /home/pi/co2ampel && sudo ./setup.sh pi'
+```
 
-The sensor half deploys the same way from [co2-monitor-rs](https://github.com/aa-ko/co2-sensor-rs) (`just build-pi`, then its `co2-monitor.service`).
+[`packaging/setup.sh`](packaging/setup.sh) takes the user that should run the service and does the rest: installs the binary and the udev rule, writes the unit with that user baked in, and enables it. It never overwrites an existing `/etc/default/co2ampel`, so on a first install it stops short of starting the service and tells you to fill in the broker and topic — those live there rather than in the unit so no credentials end up in systemd. The service turns the light off when it stops.
+
+The sensor half deploys the same way from [co2-monitor-rs](https://github.com/aa-ko/co2-sensor-rs): `just deploy pi:/home/pi/co2-monitor`, then its own `setup.sh`.
 
 ## Testing with mqttui
 

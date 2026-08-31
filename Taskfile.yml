@@ -8,6 +8,7 @@
 #   task build           # both crates (release)
 #   task test            # all workspace tests
 #   task arm             # cross-compile co2ampel for a 64-bit Raspberry Pi
+#   task deploy -- pi:/home/pi/co2ampel   # build + copy everything to a Pi
 #
 #   task co2 -- --host pi --topic buero-nord/co2sensor/co2   # run the CO2 light
 #
@@ -51,6 +52,29 @@ tasks:
     cmds:
       - cross build --release --target {{.ARM_TARGET}} -p co2ampel
       - 'echo "-> target/{{.ARM_TARGET}}/release/co2ampel"'
+
+  deploy:
+    desc: 'Build for ARM and copy everything a Pi needs, e.g. task deploy -- pi:/home/pi/co2ampel'
+    deps: [arm]
+    cmds:
+      - |
+        target="{{.CLI_ARGS}}"
+        case "$target" in
+            *:*) ;;
+            *) echo "usage: task deploy -- <ssh-host>:<path>" >&2; exit 2 ;;
+        esac
+        host="${target%%:*}"
+        path="${target#*:}"
+        ssh "$host" "mkdir -p '$path'"
+        scp target/{{.ARM_TARGET}}/release/co2ampel \
+            packaging/99-cleware.rules \
+            packaging/co2ampel.service \
+            packaging/co2ampel.env \
+            packaging/setup.sh \
+            "$host:$path/"
+        echo
+        echo "Copied. On the Pi:"
+        echo "  cd $path && sudo ./setup.sh <user>"
 
   test:
     desc: Run all workspace tests
