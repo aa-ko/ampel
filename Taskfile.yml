@@ -9,7 +9,7 @@
 #   task test            # all workspace tests
 #   task arm             # cross-compile co2ampel for a 64-bit Raspberry Pi
 #
-#   task co2 -- --host pi --topic sensors/office/co2   # run the CO2 light
+#   task co2 -- --host pi --topic buero-nord/co2sensor/co2   # run the CO2 light
 #
 #   task install-udev    # udev rules for the light (needs sudo)
 #   task clean
@@ -58,7 +58,7 @@ tasks:
       - cargo test
 
   co2:
-    desc: 'Run the CO2 light, e.g. task co2 -- --host pi --topic sensors/office/co2'
+    desc: 'Run the CO2 light, e.g. task co2 -- --host pi --topic buero-nord/co2sensor/co2'
     deps: [build]
     cmds:
       - "{{.CO2_BIN}} {{.CLI_ARGS}}"

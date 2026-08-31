@@ -60,7 +60,7 @@ task build           # both crates (the vendor C++ comes along via build.rs)
 task test            # all workspace tests
 task arm             # cross-compile co2ampel for a 64-bit Pi
 
-task co2 -- --host pi --topic sensors/office/co2
+task co2 -- --host pi --topic buero-nord/co2sensor/co2
 task install-udev    # udev rule for the light (needs sudo)
 ```
 
@@ -79,21 +79,21 @@ The sensor half deploys the same way from [co2-monitor-rs](https://github.com/aa
 ```sh
 export MQTTUI_BROKER=mqtt://homeassistant.intern.atmina.systems
 mqttui                                  # browse the whole broker
-mqttui log 'buero-thevea/co2sensor/#'   # follow both readings
+mqttui log 'buero-nord/co2sensor/#'   # follow both readings
 ```
 
 Fake readings, so you can see every colour without breathing on the sensor:
 
 ```sh
-mqttui publish buero-thevea/co2sensor/co2 700    # green
-mqttui publish buero-thevea/co2sensor/co2 1000   # yellow
-mqttui publish buero-thevea/co2sensor/co2 1500   # red
+mqttui publish buero-nord/co2sensor/co2 700    # green
+mqttui publish buero-nord/co2sensor/co2 1000   # yellow
+mqttui publish buero-nord/co2sensor/co2 1500   # red
 ```
 
 Run `co2ampel` against the same topic while doing that:
 
 ```sh
-task co2 -- --host homeassistant.intern.atmina.systems --topic buero-thevea/co2sensor/co2
+task co2 -- --host homeassistant.intern.atmina.systems --topic buero-nord/co2sensor/co2
 ```
 
 Each switch is logged with the ppm that caused it. Remember the 3 s cooldown between physical switches: publish faster than that and only the newest colour lands.
